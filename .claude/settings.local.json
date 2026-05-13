@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(npm --version)",
+      "Read(//d/Environment/nodejs/**)",
+      "Bash(/d/Environment/nodejs/node.exe --version)",
+      "Bash(cmd //c \"node --version\")",
+      "Bash(cmd //c \"npm --version\")",
+      "PowerShell(npm *)",
+      "PowerShell(uv *)",
+      "Read(//c/Users/fuyou/AppData/Local/nvm//**)",
+      "Read(//c/nvm4w//**)",
+      "Bash(/c/nvm4w/nvm.exe list *)",
+      "Bash(/c/nvm4w/nodejs/node.exe --version)",
+      "Bash(/c/Users/fuyou/AppData/Local/nvm/v18.20.4/node.exe *)",
+      "Bash(rm /c/nvm4w/nodejs)",
+      "Bash(ln -s /c/Users/fuyou/AppData/Local/nvm/v18.20.4 /c/nvm4w/nodejs)",
+      "Bash(export PATH=\"/c/nvm4w/nodejs:/c/nvm4w/nodejs/node_modules/npm/bin:$PATH\")",
+      "Bash(uv venv *2)",
+      "Bash(uv pip *)",
+      "Bash(where python *)"
+    ]
+  }
+}
