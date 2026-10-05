@@ -66,7 +66,10 @@ def _sse_event(event: str, payload: dict[str, Any]) -> bytes:
 @router.post("/planning")
 def planning(payload: PlanningPayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ensure_project_member(payload.project_id, current_user.id, db)
-    result = generate_project_plan(db, payload.project_id, payload.user_prompt)
+    try:
+        result = generate_project_plan(db, payload.project_id, payload.user_prompt, user_id=current_user.id)
+    except (ValueError, LLMServiceError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     suggestion = AITaskSuggestion(
         project_id=payload.project_id,
         title=f"{payload.project_name or '项目'} AI 任务规划",
@@ -114,7 +117,10 @@ def confirm_plan(suggestion_id: int, db: Session = Depends(get_db), current_user
 @router.post("/reports/weekly")
 def weekly_report(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ensure_project_member(project_id, current_user.id, db)
-    content = generate_weekly_report(db, project_id)
+    try:
+        content = generate_weekly_report(db, project_id, user_id=current_user.id)
+    except (ValueError, LLMServiceError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     report = AIReportHistory(project_id=project_id, report_type="weekly", content=content)
     db.add(report)
     db.commit()
@@ -136,10 +142,10 @@ def file_analysis(project_id: int, payload: AIFileAnalysisPayload, db: Session =
 
     try:
         if payload.document_id:
-            result = analyze_document(db, project_id=project_id, document_id=payload.document_id, prompt=payload.prompt)
+            result = analyze_document(db, project_id=project_id, document_id=payload.document_id, prompt=payload.prompt, user_id=current_user.id)
             file_name = result.get("source_name") or f"document-{payload.document_id}"
         else:
-            result = analyze_file(db, project_id=project_id, file_id=payload.file_id or 0, prompt=payload.prompt)
+            result = analyze_file(db, project_id=project_id, file_id=payload.file_id or 0, prompt=payload.prompt, user_id=current_user.id)
             file_name = result.get("source_name") or f"file-{payload.file_id}"
     except (ValueError, LLMServiceError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -214,6 +220,7 @@ def chat_stream(project_id: int, payload: AIChatPayload, db: Session = Depends(g
                 route_params=payload.route_params,
                 query=payload.query,
                 page_context=payload.page_context,
+                user_id=current_user.id,
             )
             action_results = execute_actions(db, project_id=project_id, current_user=current_user, actions=completed["actions"]) if payload.auto_execute else []
 

@@ -358,3 +358,15 @@ class AIReportHistory(Base):
     report_type = Column(String(50), default="weekly")
     content = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserLLMConfig(Base):
+    __tablename__ = "user_llm_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    provider = Column(String(30), default="mimo")
+    base_url = Column(String(255), default="")
+    api_key = Column(String(255), default="")
+    model = Column(String(120), default="")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

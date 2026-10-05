@@ -2,10 +2,8 @@ import json
 from collections import defaultdict
 from datetime import datetime
 
-import httpx
 from sqlalchemy.orm import Session
 
-from app.core.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TIMEOUT_SECONDS
 from app.models.entities import (
     AIReportHistory,
     ContributionEvidence,
@@ -18,6 +16,7 @@ from app.models.entities import (
     Task,
     TaskActivity,
 )
+from app.services.llm_service import LLMConfig, LLMServiceError, complete_json, get_llm_config
 from app.services.presenters import build_user_map, fmt_dt, user_brief
 from app.utils.serializers import dump_json, parse_json
 
@@ -93,7 +92,7 @@ def get_cached_contribution_payload(db: Session, project_id: int):
     return payload if isinstance(payload, dict) else None
 
 
-def build_contribution_payload(db: Session, project_id: int, *, prefer_llm: bool, persist: bool):
+def build_contribution_payload(db: Session, project_id: int, *, prefer_llm: bool, persist: bool, user_id: int | None = None):
     users = build_user_map(db)
     member_rows = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
     member_ids = [
@@ -154,7 +153,7 @@ def build_contribution_payload(db: Session, project_id: int, *, prefer_llm: bool
         score_row = _build_score_row(users[user_id], metrics)
         profile = _build_profile(users[user_id], metrics)
         if prefer_llm:
-            llm_profile = _build_profile_with_llm(users[user_id], metrics)
+            llm_profile = _build_profile_with_llm(users[user_id], metrics, get_llm_config(db, user_id))
             if llm_profile:
                 profile.update(llm_profile)
                 profile["traits"] = profile["strengths"][:3]
@@ -393,8 +392,8 @@ def _build_profile(user, metrics):
     }
 
 
-def _build_profile_with_llm(user, metrics):
-    if not (LLM_API_KEY and LLM_BASE_URL and LLM_MODEL):
+def _build_profile_with_llm(user, metrics, config: LLMConfig):
+    if not (config.api_key and config.base_url and config.model):
         return None
 
     prompt = {
@@ -439,18 +438,7 @@ def _build_profile_with_llm(user, metrics):
         },
     ]
     try:
-        endpoint = LLM_BASE_URL.rstrip("/")
-        if not endpoint.endswith("/chat/completions"):
-            endpoint = f"{endpoint}/chat/completions"
-        response = httpx.post(
-            endpoint,
-            headers={"Authorization": f"Bearer {LLM_API_KEY}"},
-            json={"model": LLM_MODEL, "messages": messages, "temperature": 0.4},
-            timeout=LLM_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        parsed = _extract_json_object(content)
+        parsed = complete_json(messages, config=config, temperature=0.4, max_tokens=1200, retries=1)
         if not parsed:
             return None
         return {
@@ -463,7 +451,7 @@ def _build_profile_with_llm(user, metrics):
             "recommended_roles": _normalize_text_list(parsed.get("recommended_roles"), ROLE_LIBRARY.get(_select_profile_label(metrics), ROLE_LIBRARY["执行推进型"])),
             "career_recommendation": parsed.get("career_recommendation") or f"更适合优先尝试 {ROLE_LIBRARY.get(_select_profile_label(metrics), ROLE_LIBRARY['执行推进型'])[0]}。",
         }
-    except Exception:
+    except LLMServiceError:
         return None
 
 
@@ -681,21 +669,3 @@ def _normalize_text_list(value, default):
         return default
     cleaned = [str(item).strip() for item in value if str(item).strip()]
     return cleaned[:3] or default
-
-
-def _extract_json_object(content: str):
-    if not content:
-        return None
-    content = content.strip()
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-    start = content.find("{")
-    end = content.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        return json.loads(content[start : end + 1])
-    except json.JSONDecodeError:
-        return None

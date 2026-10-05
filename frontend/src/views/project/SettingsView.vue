@@ -91,16 +91,48 @@
         <el-table-column label="项目设置" prop="settings" align="center" />
       </el-table>
     </div>
+
+    <div class="teamflow-card panel">
+      <div class="section-title">
+        <el-icon style="margin-right: 8px; color: #8B5CF6; font-size: 20px; vertical-align: -3px;"><MagicStick /></el-icon>AI 模型配置
+        <span class="tiny-muted" style="font-size: 13px; font-weight: 400; margin-left: 8px;">个人配置，仅当前账号生效；留空则使用服务端默认</span>
+      </div>
+      <el-form :model="llmForm" label-position="top">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <el-form-item label="模型提供商">
+            <el-select v-model="llmForm.provider" @change="onProviderChange" style="width: 100%">
+              <el-option v-for="p in providers" :key="p.key" :label="providerLabel(p.key)" :value="p.key" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="模型名称">
+            <el-input v-model="llmForm.model" :placeholder="llmForm.provider === 'custom' ? '如 gpt-4o-mini / glm-4-flash' : '留空使用该提供商默认模型'" />
+          </el-form-item>
+        </div>
+        <el-form-item label="Base URL（OpenAI 兼容接口）">
+          <el-input v-model="llmForm.base_url" :placeholder="llmForm.provider === 'custom' ? '如 https://api.openai.com/v1' : '留空使用该提供商默认地址'" />
+        </el-form-item>
+        <el-form-item :label="apiKeyLabel">
+          <el-input v-model="llmForm.api_key" type="password" show-password placeholder="sk-..." />
+        </el-form-item>
+        <div class="llm-actions">
+          <el-button :loading="llmTesting" @click="testLlmConfig">测试连接</el-button>
+          <el-button type="primary" :loading="llmSaving" @click="saveLlmConfig" class="save-btn">保存配置</el-button>
+        </div>
+        <div v-if="llmTestResult" :class="['llm-test-result', llmTestResult.ok ? 'ok' : 'fail']">
+          {{ llmTestResult.ok ? '✓ ' : '✗ ' }}{{ llmTestResult.message }}
+        </div>
+      </el-form>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { Setting, User, Message, List, Lock } from '@element-plus/icons-vue'
+import { Setting, User, Message, List, Lock, MagicStick } from '@element-plus/icons-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { authApi, projectApi } from '@/api'
+import { authApi, llmConfigApi, projectApi } from '@/api'
 import { useProjectStore } from '@/stores/project'
 
 const route = useRoute()
@@ -133,6 +165,89 @@ const permissionRows = [
   { role: '教师（Teacher）', invite: '—', assign: '—', audit: '√', report: '√', delete: '—', settings: '√' },
 ]
 
+const PROVIDER_LABELS: Record<string, string> = {
+  mimo: 'MiMo（小米）',
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  qwen: '通义千问',
+  glm: '智谱 GLM',
+  moonshot: 'Moonshot（Kimi）',
+  custom: '自定义',
+}
+const providerLabel = (key: string) => PROVIDER_LABELS[key] || key
+
+const llmForm = reactive({ provider: 'mimo', base_url: '', api_key: '', model: '' })
+const providers = ref<{ key: string; base_url: string; model: string }[]>([])
+const llmKeyMasked = ref('')
+const llmSaving = ref(false)
+const llmTesting = ref(false)
+const llmTestResult = ref<{ ok: boolean; message: string } | null>(null)
+const apiKeyLabel = computed(() =>
+  llmKeyMasked.value ? `API Key（已保存：${llmKeyMasked.value}，留空则不修改）` : 'API Key',
+)
+
+const onProviderChange = () => {
+  const preset = providers.value.find((p) => p.key === llmForm.provider)
+  if (preset && llmForm.provider !== 'custom') {
+    if (!llmForm.base_url) llmForm.base_url = preset.base_url
+    if (!llmForm.model) llmForm.model = preset.model
+  }
+}
+
+const loadLlmConfig = async () => {
+  try {
+    const { data } = await llmConfigApi.get()
+    providers.value = data.providers || []
+    llmForm.provider = data.provider || 'mimo'
+    llmForm.base_url = data.has_user_override ? data.base_url : ''
+    llmForm.model = data.has_user_override ? data.model : ''
+    llmForm.api_key = ''
+    llmKeyMasked.value = data.api_key_masked || ''
+  } catch {
+    // 未登录或接口不可用时静默
+  }
+}
+
+const saveLlmConfig = async () => {
+  llmSaving.value = true
+  try {
+    const { data } = await llmConfigApi.update({
+      provider: llmForm.provider,
+      base_url: llmForm.base_url,
+      api_key: llmForm.api_key,
+      model: llmForm.model,
+    })
+    providers.value = data.providers || providers.value
+    llmKeyMasked.value = data.api_key_masked || ''
+    llmForm.api_key = ''
+    llmForm.base_url = data.has_user_override ? data.base_url : ''
+    llmForm.model = data.has_user_override ? data.model : ''
+    ElMessage.success('AI 模型配置已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '保存失败')
+  } finally {
+    llmSaving.value = false
+  }
+}
+
+const testLlmConfig = async () => {
+  llmTesting.value = true
+  llmTestResult.value = null
+  try {
+    const { data } = await llmConfigApi.test({
+      provider: llmForm.provider,
+      base_url: llmForm.base_url,
+      api_key: llmForm.api_key,
+      model: llmForm.model,
+    })
+    llmTestResult.value = { ok: data.ok, message: data.message + (data.reply ? `（模型回复：${data.reply}）` : '') }
+  } catch (e: any) {
+    llmTestResult.value = { ok: false, message: e?.response?.data?.detail || '测试请求失败' }
+  } finally {
+    llmTesting.value = false
+  }
+}
+
 const load = async () => {
   const [detailRes, memberRes, inviteRes] = await Promise.all([
     projectApi.detail(projectId.value),
@@ -164,7 +279,10 @@ const save = async () => {
   ElMessage.success('设置已保存')
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadLlmConfig()
+})
 </script>
 
 <style scoped>
@@ -283,5 +401,35 @@ onMounted(load)
     gap: 10px;
     flex-direction: column;
   }
+}
+
+.tiny-muted {
+  color: var(--text-muted, #94a3b8);
+}
+
+.llm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.llm-test-result {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.llm-test-result.ok {
+  background: rgba(16, 185, 129, 0.08);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.llm-test-result.fail {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }
 </style>

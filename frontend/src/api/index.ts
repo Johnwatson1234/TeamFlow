@@ -91,6 +91,14 @@ export const aiApi = {
   executeActions: (projectId: string | number, payload: Record<string, unknown>) => http.post(`/ai/projects/${projectId}/ai/actions/execute`, payload),
 }
 
+export const llmConfigApi = {
+  get: () => http.get('/me/llm-config'),
+  update: (payload: { provider: string; base_url: string; api_key: string; model: string }) =>
+    http.put('/me/llm-config', payload),
+  test: (payload: { provider: string; base_url: string; api_key: string; model: string }) =>
+    http.post('/me/llm-config/test', payload),
+}
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('teamflow-token')
   const headers: Record<string, string> = {}

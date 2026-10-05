@@ -291,13 +291,13 @@ def contribution(project_id: int, db: Session = Depends(get_db), current_user: U
     cached = get_cached_contribution_payload(db, project_id)
     if cached:
         return cached
-    return build_contribution_payload(db, project_id, prefer_llm=False, persist=False)
+    return build_contribution_payload(db, project_id, prefer_llm=False, persist=False, user_id=current_user.id)
 
 
 @router.post("/{project_id}/contribution/recalculate")
 def recalc_contribution(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ensure_project_member(project_id, current_user.id, db)
-    payload = build_contribution_payload(db, project_id, prefer_llm=True, persist=True)
+    payload = build_contribution_payload(db, project_id, prefer_llm=True, persist=True, user_id=current_user.id)
     db.commit()
     return payload
 

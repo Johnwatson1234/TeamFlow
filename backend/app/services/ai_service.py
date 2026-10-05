@@ -20,7 +20,7 @@ from app.models.entities import (
     TaskActivity,
     User,
 )
-from app.services.llm_service import LLMServiceError, complete_json, complete_text
+from app.services.llm_service import LLMServiceError, complete_json, complete_text, get_llm_config
 from app.services.member_insights import build_contribution_payload
 from app.services.presenters import (
     build_dashboard_payload,
@@ -287,7 +287,7 @@ def build_project_snapshot(
     }
 
 
-def generate_project_plan(db: Session, project_id: int, user_prompt: str) -> dict[str, Any]:
+def generate_project_plan(db: Session, project_id: int, user_prompt: str, *, user_id: int | None = None) -> dict[str, Any]:
     snapshot = build_project_snapshot(db, project_id, route_name="ai")
     messages = [
         {
@@ -306,7 +306,7 @@ def generate_project_plan(db: Session, project_id: int, user_prompt: str) -> dic
             "content": json.dumps({"user_prompt": user_prompt, "project_snapshot": snapshot}, ensure_ascii=False),
         },
     ]
-    parsed = complete_json(messages, temperature=0.25, max_tokens=1800, retries=1)
+    parsed = complete_json(messages, config=get_llm_config(db, user_id), temperature=0.25, max_tokens=1800, retries=1)
     parsed.setdefault("summary", f"围绕 {snapshot['project']['name']} 生成的实时任务规划。")
     parsed.setdefault("phases", [])
     parsed.setdefault("tasks", [])
@@ -315,7 +315,7 @@ def generate_project_plan(db: Session, project_id: int, user_prompt: str) -> dic
     return parsed
 
 
-def generate_weekly_report(db: Session, project_id: int) -> str:
+def generate_weekly_report(db: Session, project_id: int, *, user_id: int | None = None) -> str:
     snapshot = build_project_snapshot(db, project_id, route_name="dashboard")
     messages = [
         {
@@ -330,10 +330,10 @@ def generate_weekly_report(db: Session, project_id: int) -> str:
             "content": json.dumps(snapshot, ensure_ascii=False),
         },
     ]
-    return complete_text(messages, temperature=0.35, max_tokens=1400)
+    return complete_text(messages, config=get_llm_config(db, user_id), temperature=0.35, max_tokens=1400)
 
 
-def analyze_document(db: Session, *, project_id: int, document_id: int, prompt: str = "") -> dict[str, Any]:
+def analyze_document(db: Session, *, project_id: int, document_id: int, prompt: str = "", user_id: int | None = None) -> dict[str, Any]:
     document = (
         db.query(Document)
         .filter(Document.project_id == project_id, Document.id == document_id, Document.is_deleted == False)  # noqa: E712
@@ -346,10 +346,11 @@ def analyze_document(db: Session, *, project_id: int, document_id: int, prompt: 
         source_type="document",
         content=document.content,
         prompt=prompt,
+        user_id=user_id,
     )
 
 
-def analyze_file(db: Session, *, project_id: int, file_id: int, prompt: str = "") -> dict[str, Any]:
+def analyze_file(db: Session, *, project_id: int, file_id: int, prompt: str = "", user_id: int | None = None) -> dict[str, Any]:
     file_row = db.query(FileResource).filter(FileResource.project_id == project_id, FileResource.id == file_id).first()
     if not file_row:
         raise ValueError("文件不存在")
@@ -359,10 +360,11 @@ def analyze_file(db: Session, *, project_id: int, file_id: int, prompt: str = ""
         source_type="file",
         content=content,
         prompt=prompt,
+        user_id=user_id,
     )
 
 
-def _analyze_content(*, source_name: str, source_type: str, content: str, prompt: str) -> dict[str, Any]:
+def _analyze_content(*, source_name: str, source_type: str, content: str, prompt: str, user_id: int | None = None) -> dict[str, Any]:
     excerpt = (content or "").strip()
     if not excerpt:
         raise ValueError("文件内容为空，无法分析")
@@ -389,7 +391,7 @@ def _analyze_content(*, source_name: str, source_type: str, content: str, prompt
             ),
         },
     ]
-    parsed = complete_json(messages, temperature=0.2, max_tokens=1400, retries=1)
+    parsed = complete_json(messages, config=get_llm_config(db, user_id), temperature=0.2, max_tokens=1400, retries=1)
     parsed.setdefault("summary", "")
     parsed.setdefault("scale", f"{len(excerpt)} 字")
     parsed.setdefault("workload", "中")
@@ -412,6 +414,7 @@ def build_chat_completion(
     route_params: dict[str, Any] | None,
     query: dict[str, Any] | None,
     page_context: dict[str, Any] | None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     snapshot = build_project_snapshot(
         db,
@@ -438,7 +441,7 @@ def build_chat_completion(
             "content": json.dumps({"prompt": prompt, "snapshot": snapshot}, ensure_ascii=False),
         },
     ]
-    parsed = complete_json(messages, temperature=0.35, max_tokens=2000, retries=1)
+    parsed = complete_json(messages, config=get_llm_config(db, user_id), temperature=0.35, max_tokens=2000, retries=1)
     reply = str(parsed.get("reply") or "").strip()
     actions = parsed.get("actions") if isinstance(parsed.get("actions"), list) else []
     normalized = []
@@ -607,7 +610,7 @@ def execute_actions(
                 db.refresh(row)
                 result["result"] = {"message": "里程碑已创建", "milestone_id": row.id}
             elif action_type == "generate_weekly_report":
-                report = generate_weekly_report(db, project_id)
+                report = generate_weekly_report(db, project_id, user_id=current_user.id)
                 row = AIReportHistory(project_id=project_id, report_type="weekly", content=report)
                 db.add(row)
                 db.commit()
@@ -629,7 +632,7 @@ def execute_actions(
                 db.refresh(risk)
                 result["result"] = {"message": "风险扫描结果已写入", "risk_id": risk.id}
             elif action_type == "recalculate_contribution":
-                payload = build_contribution_payload(db, project_id, prefer_llm=True, persist=True)
+                payload = build_contribution_payload(db, project_id, prefer_llm=True, persist=True, user_id=current_user.id)
                 db.commit()
                 result["result"] = {"message": "贡献分析已重算", "analysis_mode": payload.get("summary", {}).get("analysis_mode")}
         except Exception as exc:
