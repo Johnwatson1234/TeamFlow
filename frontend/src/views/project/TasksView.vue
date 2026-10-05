@@ -537,7 +537,7 @@ onUnmounted(() => {
   color: var(--primary);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
   .filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

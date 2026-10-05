@@ -546,7 +546,7 @@ onUnmounted(() => {
 .messages-page {
   display: flex;
   gap: 20px;
-  height: calc(100vh - 110px);
+  height: calc(100dvh - 112px);
 }
 
 .conversation-pane {

@@ -26,7 +26,7 @@
               <div>{{ item.author.name }} · {{ item.commit_hash }}</div>
               <div class="tiny-muted">{{ item.message }} · {{ item.branch_name }}</div>
             </div>
-            <span class="status-tag green">质量分 {{ item.quality_score }}</span>
+            <span class="status-tag green score-tag">质量分 {{ formatScore(item.quality_score) }}</span>
           </div>
         </div>
       </div>
@@ -247,6 +247,11 @@ const heatTextColor = (heat: number) => {
   return '#4f46e5'
 }
 
+const formatScore = (score: number | null | undefined) => {
+  if (score === null || score === undefined || Number.isNaN(score)) return '—'
+  return score.toFixed(1)
+}
+
 onMounted(load)
 </script>
 
@@ -382,6 +387,11 @@ onMounted(load)
   width: 34px;
   height: 34px;
   border-radius: 50%;
+}
+
+.score-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Explorer Styles */

@@ -168,7 +168,7 @@ onMounted(load)
 .dashboard-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: 1.45fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .panel {
@@ -232,7 +232,7 @@ onMounted(load)
 
 @media (max-width: 1200px) {
   .dashboard-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 

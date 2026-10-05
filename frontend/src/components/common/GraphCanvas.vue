@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .graph-canvas {
   width: 100%;
-  height: 640px;
+  height: clamp(320px, 60vh, 640px);
   border: 1px solid rgba(219, 231, 243, 0.9);
   border-radius: 18px;
   background: var(--chart-bg);

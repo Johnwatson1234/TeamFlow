@@ -308,7 +308,7 @@ img {
 }
 
 @media (max-width: 1200px) {
-  .grid-4, .grid-3 {
+  .grid-4, .grid-3, .grid-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

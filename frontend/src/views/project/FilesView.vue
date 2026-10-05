@@ -351,16 +351,20 @@ onUnmounted(() => {
 
 @media (max-width: 1200px) {
   .files-layout {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
-  .file-bottom-grid {
-    grid-template-columns: 1fr 1fr;
+  .file-table-panel,
+  .file-preview {
+    width: 100%;
+  }
+
+  .file-preview {
+    position: static;
   }
 }
 
 @media (max-width: 768px) {
-  .file-bottom-grid,
   .preview-grid {
     grid-template-columns: 1fr;
   }

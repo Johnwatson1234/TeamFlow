@@ -180,7 +180,8 @@ onMounted(load)
 
 .timeline-metrics {
   display: flex;
-  gap: 48px;
+  flex-wrap: wrap;
+  gap: 24px 48px;
   margin-bottom: 24px;
 }
 
@@ -188,6 +189,7 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 120px;
 }
 
 .metric-box label {
